@@ -1,6 +1,6 @@
 #!/bin/bash
 
-profile="prod"
+profile="m_prod"
 region="us-west-2"
 
 aws_command="aws --profile $profile --region $region"

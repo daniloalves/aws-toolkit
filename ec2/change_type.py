@@ -7,8 +7,6 @@ logger_toolkit = logger_aws_toolkit()
 session = get_session()
 ec2 = session.client('ec2')
 
-DEFAULT_SLEEP_TIME = 1*60
-
 def ec2_stop_instances(instance_ids=[]):
     logger_toolkit.debug(f"Stopping: {instance_ids}")
     response = ec2.stop_instances(
@@ -32,6 +30,41 @@ def ec2_instances_state(instance_ids=[]):
         instances_state.append({'instance_id':instance_id,'instance_state':instance_state})
     return instances_state
 
+
+def wait_instances_stopped(instance_ids=None, timeout: int = 300, poll_interval: int = 10):
+    """Wait until all given instances report state 'stopped'.
+
+    - instance_ids: list of instance ids
+    - timeout: total seconds to wait before giving up (default 300s)
+    - poll_interval: seconds between polls (default 10s)
+    """
+    if instance_ids is None:
+        instance_ids = []
+
+    logger_toolkit.info(f"Waiting up to {timeout}s for instances to stop: {instance_ids}")
+    elapsed = 0
+    while True:
+        states = ec2_instances_state(instance_ids)
+        all_stopped = True
+        for s in states:
+            instance_id = s.get('instance_id')
+            state = s.get('instance_state')
+            logger_toolkit.debug(f"{instance_id} state={state}")
+            if state != 'stopped':
+                all_stopped = False
+                logger_toolkit.info(f"[{instance_id}] Waiting stop (current: {state}).")
+
+        if all_stopped:
+            logger_toolkit.info("All instances stopped")
+            return True
+
+        if elapsed >= timeout:
+            logger_toolkit.error(f"Timeout waiting for instances to stop after {elapsed}s")
+            return False
+
+        sleep(poll_interval)
+        elapsed += poll_interval
+
 def ec2_start_instances(instance_ids=[]):
     logger_toolkit.debug(f"Starting: {instance_ids}")
     response = ec2.start_instances(
@@ -44,21 +77,8 @@ def ec2_start_instances(instance_ids=[]):
 def ec2_change_type(instance_ids=[], instance_type=None):
     logger_toolkit.debug(f"Changing: {instance_ids}")
     stop_instances = ec2_stop_instances(instance_ids)
-    sleep(DEFAULT_SLEEP_TIME)
-    
-    check_instances_state = ec2_instances_state(instance_ids)
-    while True:
-        all_good = True
-        for instance_state in check_instances_state:
-            id = instance_state['instance_state']
-            stopped = instance_state['instance_state']
-            if stopped != 'stopped':
-                all_good = False
-                logger_toolkit.info(f"[{id}] Wating stop.")
-        if all_good:
-            break;
-        else:
-            check_instances_state = ec2_instances_state(instance_ids)
+    # Wait until all instances are in 'stopped' state
+    wait_instances_stopped(instance_ids)
     
     def self_ec2_change_type():
         logger_toolkit.debug(f"self changing: {instance_ids}")
