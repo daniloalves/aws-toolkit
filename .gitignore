@@ -16,3 +16,5 @@ iqoptionapi
 resources/COTAHIST_A2021.TXT
 logs
 logs/*
+.txt
+*.txt
